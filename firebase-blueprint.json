@@ -1,0 +1,83 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with role",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "teacher", "parent", "student"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "name", "email", "role", "createdAt"]
+    },
+    "Course": {
+      "title": "Course",
+      "description": "A course offered to students",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "fee": { "type": "number" },
+        "imageUrl": { "type": "string" },
+        "offer": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "description", "fee", "createdAt"]
+    },
+    "Registration": {
+      "title": "Registration",
+      "description": "A student registered for a course",
+      "type": "object",
+      "properties": {
+        "courseId": { "type": "string" },
+        "courseTitle": { "type": "string" },
+        "studentName": { "type": "string" },
+        "studentEmail": { "type": "string" },
+        "registeredBy": { "type": "string" },
+        "fee": { "type": "number" },
+        "paymentStatus": { "type": "string", "enum": ["pending", "paid"] },
+        "paymentId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["courseId", "courseTitle", "studentName", "registeredBy", "fee", "paymentStatus", "createdAt"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "A payment slip uploaded for one or more registrations",
+      "type": "object",
+      "properties": {
+        "uploadedBy": { "type": "string" },
+        "amount": { "type": "number" },
+        "slipUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "rejected"] },
+        "registrationIds": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uploadedBy", "amount", "slipUrl", "status", "registrationIds", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles"
+    },
+    "/courses/{courseId}": {
+      "schema": { "$ref": "#/entities/Course" },
+      "description": "Stores available courses"
+    },
+    "/registrations/{registrationId}": {
+      "schema": { "$ref": "#/entities/Registration" },
+      "description": "Stores student course registrations"
+    },
+    "/payments/{paymentId}": {
+      "schema": { "$ref": "#/entities/Payment" },
+      "description": "Stores payment slips and their status"
+    }
+  }
+}

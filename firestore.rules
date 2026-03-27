@@ -1,0 +1,113 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && (
+        (request.auth.token.email == "tharukad062@gmail.com" && request.auth.token.email_verified == true) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+    
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    
+    function isValidUser(data) {
+      return data.uid is string && data.uid.size() > 0 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.email is string && isValidEmail(data.email) &&
+             data.role in ['admin', 'teacher', 'parent', 'student'] &&
+             data.createdAt is string;
+    }
+    
+    function isValidCourse(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.description is string && data.description.size() < 2000 &&
+             data.fee is number && data.fee >= 0 &&
+             (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() < 2000)) &&
+             (!('offer' in data) || (data.offer is string && data.offer.size() < 100)) &&
+             data.createdAt is string;
+    }
+    
+    function isValidRegistration(data) {
+      return data.courseId is string && data.courseId.size() > 0 &&
+             data.courseTitle is string && data.courseTitle.size() > 0 && data.courseTitle.size() < 200 &&
+             data.studentName is string && data.studentName.size() > 0 && data.studentName.size() < 100 &&
+             (!('studentEmail' in data) || (data.studentEmail is string && data.studentEmail.size() < 100)) &&
+             data.registeredBy is string && data.registeredBy == request.auth.uid &&
+             data.fee is number && data.fee >= 0 &&
+             data.paymentStatus in ['pending', 'paid'] &&
+             (!('paymentId' in data) || data.paymentId is string) &&
+             data.createdAt is string;
+    }
+    
+    function isValidPayment(data) {
+      return data.uploadedBy is string && data.uploadedBy == request.auth.uid &&
+             data.amount is number && data.amount > 0 &&
+             data.slipUrl is string && data.slipUrl.size() > 0 && data.slipUrl.size() < 1000000 && // allow base64
+             data.status in ['pending', 'confirmed', 'rejected'] &&
+             data.registrationIds is list && data.registrationIds.size() > 0 && data.registrationIds.size() <= 100 &&
+             data.createdAt is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+    
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
+        (request.resource.data.role != 'admin' || isAdmin());
+      allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
+        (request.resource.data.role == resource.data.role || isAdmin());
+    }
+    
+    match /courses/{courseId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidCourse(request.resource.data);
+      allow update: if isAdmin() && isValidCourse(request.resource.data);
+      allow delete: if isAdmin();
+    }
+    
+    match /registrations/{registrationId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.registeredBy == request.auth.uid);
+      allow create: if isAuthenticated() && isValidRegistration(request.resource.data);
+      allow update: if isAdmin() || (
+        isAuthenticated() && 
+        resource.data.registeredBy == request.auth.uid &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paymentStatus', 'paymentId']) &&
+        request.resource.data.paymentStatus in ['pending', 'paid']
+      );
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.registeredBy == request.auth.uid && resource.data.paymentStatus == 'pending');
+    }
+    
+    match /payments/{paymentId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.uploadedBy == request.auth.uid);
+      allow create: if isAuthenticated() && isValidPayment(request.resource.data) && request.resource.data.status == 'pending';
+      allow update: if isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+    }
+  }
+}
